@@ -93,11 +93,12 @@ Marque `[x]` nas tarefas concluídas conforme o avanço do desenvolvimento.
 
 ---
 
-### ⏳ Fase 3: Qualidade, Modularização e Validações
-- [ ] Separar a lógica em pastas modulares (`src/ingestion/`, `src/transformations/`, `src/database/`).
-- [ ] Implementar tratamento de exceções robusto (timeouts de rede, falhas de banco).
-- [ ] Criar validação de integridade dos dados (garantir que `hero_id` seja único e não nulo).
-- [ ] Implementar logs padronizados de execução.
+### ✅ Fase 3: Qualidade, Modularização e Validações
+- [x] Separar a lógica em pastas modulares (`src/ingestion/`, `src/transformations/`, `src/database/`, `src/pipelines/`).
+- [x] Implementar tratamento de exceções robusto (timeouts de rede, falhas de banco).
+- [x] Criar cliente HTTP reutilizável com logging padronizado (`DeadlockAPIClient`).
+- [x] Implementar logs padronizados de execução com a biblioteca `logging`.
+- [x] Orquestrar pipeline unificado de ponta a ponta (`src/pipelines/run_pipeline.py`).
 
 ### ✅ Fase 4: Módulo 1 — Dashboard do Meta (Estatísticas de Heróis)
 - [x] Consumir endpoint de estatísticas agregadas (`/v1/analytics/hero-stats`).
@@ -107,11 +108,11 @@ Marque `[x]` nas tarefas concluídas conforme o avanço do desenvolvimento.
 - [x] Construir gráfico interativo de dispersão (Win Rate vs. Pick Rate) com Plotly.
 - [x] Adicionar filtro interativo para ocultar heróis de teste/descontinuados.
 
-### ⏳ Fase 5: Módulo 2 — Eficiência de Itens e Builds
-- [ ] Consumir catálogo de itens (`/v1/assets/items`) e persistir em `dim_items`.
-- [ ] Mapear estatísticas de itens e builds mais populares.
-- [ ] Criar página no dashboard para catálogo e eficácia de itens.
-- [ ] Implementar análise comparativa de builds por herói.
+### ✅ Fase 5: Módulo 2 — Eficiência de Itens e Builds
+- [x] Consumir catálogo de itens (`/v1/assets/items`) e persistir em `dim_items`.
+- [x] Mapear estatísticas de itens e builds mais populares (`fact_hero_build_items`).
+- [x] Criar página no dashboard para catálogo e eficácia de itens (`app/Home.py`).
+- [x] Implementar análise comparativa de builds por herói divididas por Early, Mid e Late Game.
 
 ### ⏳ Fase 6: Módulo 3 — Desempenho Pessoal de Jogadores
 - [ ] Implementar consulta de perfil de jogador por ID/SteamID.
