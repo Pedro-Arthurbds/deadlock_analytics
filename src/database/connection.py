@@ -1,15 +1,37 @@
+import time
 import pandas as pd
 from sqlalchemy import create_engine, text
+from sqlalchemy.pool import NullPool
 from config import DATABASE_URL, logger
 
 # Cria a engine reutilizável conectando via URL centralizada no config.
-# pool_pre_ping=True: testa a conexão antes de usar (essencial para bancos serverless como Neon que hibernam)
-# pool_recycle=300: recicla conexões a cada 5 minutos para evitar conexões presas ou expiradas
+# Com bancos serverless (Neon com pooler PgBouncer), NullPool evita que conexões fiquem
+# ociosas na memória do Streamlit enquanto o banco entra em hibernação (Scale-to-zero).
 engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=True,
-    pool_recycle=300,
+    poolclass=NullPool,
+    connect_args={"connect_timeout": 15},
 )
+
+
+def read_sql_with_retry(query: str, max_retries: int = 3, delay: float = 1.5) -> pd.DataFrame:
+    """Executa uma query SQL com tentativas automáticas em caso de desconexão (útil para cold start do Neon)."""
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            with engine.connect() as connection:
+                return pd.read_sql(text(query), con=connection)
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                logger.warning(
+                    "Tentativa %d/%d falhou ao consultar banco (%s). Reconectando em %.1fs...",
+                    attempt + 1, max_retries, e, delay
+                )
+                time.sleep(delay)
+            else:
+                logger.error("Todas as %d tentativas falharam: %s", max_retries, e)
+                raise last_error
 
 
 def test_connection() -> bool:

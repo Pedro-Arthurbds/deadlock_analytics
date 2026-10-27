@@ -46,7 +46,7 @@ flowchart TD
     end
 
     subgraph Nuvem AWS / Neon
-        NEON[(Neon Serverless Postgres\nep-orange-dawn...neon.tech)]
+        NEON[(Neon Serverless Postgres\nep-exemplo...neon.tech)]
     end
 
     subgraph Nuvem Streamlit
@@ -108,14 +108,14 @@ O **Neon** é um banco de dados PostgreSQL **Serverless**:
 O Neon fornece para você uma **Connection String** (URL de conexão). Ela parece uma sopa de letrinhas à primeira vista, mas veja como ela é perfeitamente organizada:
 
 ```text
-postgresql://neondb_owner:npg_1yLVPkqZur9t@ep-orange-dawn-b4mtehfz-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require
-│          │            │                │                                                           │       │
-│          │            │                │                                                           │       └─ 6. Parâmetros (SSL Obrigatório)
-│          │            │                │                                                           └───────── 5. Nome do Banco de Dados
-│          │            │                └───────────────────────────────────────────────────────────────────── 4. Host (Endereço do Servidor)
-│          │            └────────────────────────────────────────────────────────────────────────────────────── 3. Senha Secreta
-│          └─────────────────────────────────────────────────────────────────────────────────────────────────── 2. Usuário
-└────────────────────────────────────────────────────────────────────────────────────────────────────────────── 1. Protocolo / SGDB
+postgresql://seu_usuario:sua_senha@ep-exemplo-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require
+│          │           │         │                                        │       │
+│          │           │         │                                        │       └─ 6. Parâmetros (SSL Obrigatório)
+│          │           │         │                                        └───────── 5. Nome do Banco de Dados
+│          │           │         └────────────────────────────────────────────────── 4. Host (Endereço do Servidor)
+│          │           └──────────────────────────────────────────────────────────── 3. Senha Secreta
+│          └──────────────────────────────────────────────────────────────────────── 2. Usuário
+└─────────────────────────────────────────────────────────────────────────────────── 1. Protocolo / SGDB
 ```
 
 ### Por que o `sslmode=require` é crucial?
@@ -211,7 +211,7 @@ Existem milhares de bots automáticos na internet escaneando commits públicos n
 No painel do Streamlit Cloud (`Settings` > `Secrets`), você fornece as credenciais diretamente na interface da nuvem:
 
 ```toml
-DATABASE_URL = "postgresql://neondb_owner:npg_1yLVPkqZur9t@.../neondb?sslmode=require"
+DATABASE_URL = "postgresql://seu_usuario:sua_senha@ep-exemplo.us-east-2.aws.neon.tech/neondb?sslmode=require"
 ```
 
 O Streamlit Cloud injeta essa variável em memória de forma segura para o seu código, sem que nenhuma linha de senha fique visível no seu código-fonte do GitHub.
@@ -275,32 +275,29 @@ Ao abrir o app hospedado no Streamlit Cloud, apareceu uma tela vermelha dizendo 
 
 ---
 
-### Caso 3: `Can't reconnect until invalid transaction is rolled back. Please rollback() fully before proceeding` (A Soneca do Neon)
+### Caso 3: `SSL connection has been closed unexpectedly` e Transações Inválidas (Cold Start do Neon)
 
 #### Sintoma:
-Você entra no link do Streamlit após algum tempo inativo e vê uma mensagem vermelha de erro de transação inválida. Porém, **ao dar F5 (recarregar a página), o erro some e os dados aparecem normalmente!**
+Ao abrir o Streamlit após alguns minutos de inatividade, aparece o erro:
+`(psycopg2.OperationalError) SSL connection has been closed unexpectedly` ou `Can't reconnect until invalid transaction is rolled back`.
 
 #### A Causa Raiz:
-1. **O Neon Hiberna (Scale-to-Zero):** Como o Neon é um banco serverless gratuito, quando ele passa cerca de 5 minutos sem receber consultas, ele desliga a máquina para economizar recursos.
-2. **A Conexão Zumbi do SQLAlchemy:** O Streamlit Cloud continuou ligado e o SQLAlchemy guardou conexões antigas na memória (connection pool).
-3. **O Conflito:** Quando você abriu o site, o SQLAlchemy tentou reutilizar aquela conexão antiga sem testá-la antes. Como o Neon já havia encerrado a conexão do lado dele enquanto dormia, a consulta do Streamlit falhou na hora. O SQLAlchemy marcou a transação como "inválida/abortada".
-4. **Por que o F5 resolvia?**
-   - O primeiro erro "acordou" o Neon.
-   - O erro fez o pool descartar a conexão quebrada.
-   - No F5, o Neon já estava 100% acordado e uma nova conexão limpa foi criada com sucesso!
+1. **O Cache de 10 minutos do Streamlit (`@st.cache_data(ttl=600)`):** O Streamlit salva os dados em memória por 10 minutos.
+2. **A Soneca de 5 minutos do Neon (Scale-to-zero):** Quando ninguém usa o banco por 5 minutos, o Neon desliga para economizar e corta a conexão SSL pelo lado dele.
+3. **O Conflito de Pooling (Streamlit vs PgBouncer do Neon):**
+   - O endereço do Neon com `-pooler` já usa o **PgBouncer** no servidor.
+   - Manter um pool local no Streamlit fazia conexões velhas (de 10 minutos atrás) tentarem ser reutilizadas após o Neon já ter cortado o SSL.
+   - Além disso, quando o Neon está "acordando" do zero, o primeiro segundo da inicialização pode derrubar a conexão antes da query terminar.
 
 #### A Solução Definitiva no Código:
-Configurar o `create_engine` com `pool_pre_ping=True` e `pool_recycle=300`:
+Duas técnicas profissionais combinadas:
 
-```python
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,  # "Pinga" o banco com SELECT 1 antes de usar. Se o Neon estava dormindo, descarta a conexão velha e reconecta silenciosamente!
-    pool_recycle=300,    # Recicla conexões a cada 5 minutos para evitar conexões expiradas no pool.
-)
-```
+1. **`NullPool` no SQLAlchemy:**
+   Em vez de manter conexões ociosas na memória do Streamlit, usamos `NullPool`. Cada consulta abre uma conexão rápida pelo PgBouncer do Neon e fecha logo após a consulta, evitando qualquer socket "zumbi".
+2. **Função Resiliente de Retry (`read_sql_with_retry`):**
+   Se o Neon estiver no meio do "despertar" e derrubar o SSL na primeira fração de segundo, a função captura a falha, aguarda 1,5 segundos (tempo do Neon acordar completamente) e tenta de novo automaticamente em segundo plano.
 
-Com esses dois parâmetros, o usuário comum **nunca mais** verá a tela de erro, pois o SQLAlchemy acorda o banco e se reconecta nos bastidores antes de renderizar os gráficos!
+O usuário final **nunca** verá o erro, pois a própria aplicação acorda o banco e entrega os dados sem precisar de F5 manual!
 
 ---
 

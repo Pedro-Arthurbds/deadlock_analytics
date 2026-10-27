@@ -9,7 +9,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from sqlalchemy import text
-from database import engine
+from database import engine, read_sql_with_retry
 
 # --- Configuração Geral da Aplicação ---
 st.set_page_config(
@@ -123,8 +123,7 @@ def load_heroes_data() -> pd.DataFrame:
         WHERE d.is_active = TRUE
         ORDER BY f.win_rate DESC;
     """
-    with engine.connect() as conn:
-        df = pd.read_sql(text(query), con=conn)
+    df = read_sql_with_retry(query)
 
     # Mapeia avatares dos heróis
     raw_heroes_path = ROOT_DIR / "data" / "heroes.json"
@@ -162,8 +161,7 @@ def load_items_catalog() -> pd.DataFrame:
         FROM dim_items
         ORDER BY tier ASC, cost ASC, name ASC;
     """
-    with engine.connect() as conn:
-        df = pd.read_sql(text(query), con=conn)
+    df = read_sql_with_retry(query)
 
     df["categoria"] = df["slot_type"].apply(translate_slot)
     df["tipo_habilidade"] = df["is_active_ability"].apply(lambda a: "⚡ Ativa" if a else "Passiva")
@@ -190,8 +188,7 @@ def load_hero_builds() -> pd.DataFrame:
         INNER JOIN dim_items i ON b.item_id = i.item_id
         ORDER BY b.game_stage, b.pick_pct DESC;
     """
-    with engine.connect() as conn:
-        df = pd.read_sql(text(query), con=conn)
+    df = read_sql_with_retry(query)
 
     df["categoria"] = df["slot_type"].apply(translate_slot)
     return df
