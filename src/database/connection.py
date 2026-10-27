@@ -2,8 +2,14 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 from config import DATABASE_URL, logger
 
-# Cria a engine reutilizável conectando via URL centralizada no config
-engine = create_engine(DATABASE_URL)
+# Cria a engine reutilizável conectando via URL centralizada no config.
+# pool_pre_ping=True: testa a conexão antes de usar (essencial para bancos serverless como Neon que hibernam)
+# pool_recycle=300: recicla conexões a cada 5 minutos para evitar conexões presas ou expiradas
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_recycle=300,
+)
 
 
 def test_connection() -> bool:
